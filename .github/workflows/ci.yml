@@ -36,8 +36,8 @@ jobs:
       - name: Ruff format
         run: uv run --locked ruff format --check .
 
-      - name: Mypy
-        run: uv run --locked mypy src
+      - name: MyPy
+        run: uv run --locked mypy
 
       - name: Pytest
         run: uv run --locked pytest --cov=creatorflow --cov-report=term-missing --cov-fail-under=80
