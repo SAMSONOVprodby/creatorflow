@@ -2,7 +2,7 @@
 
 **CreatorFlow** is a Python-based media processing project designed to simplify file conversion and content preparation workflows for creators.
 
-> 🚧 **Project status:** Early development. The API skeleton and health endpoint are available; media conversion is not implemented yet.
+> 🚧 **Project status:** Early development. The image conversion core (DEV-004) is implemented and tested. Image conversion is currently available as a Python service; an HTTP conversion endpoint is planned for DEV-005.
 
 ## Overview
 
@@ -15,18 +15,22 @@ The long-term goal is to help content creators automate repetitive media prepara
 - FastAPI application factory with configurable application metadata and debug mode.
 - Environment-based configuration using Pydantic Settings.
 - Health-check endpoint and automatically generated API documentation.
+- Image validation for JPEG, PNG, and WebP files.
+- In-memory image conversion between JPEG, PNG, and WebP using Pillow.
+- Conversion options for JPEG/WebP quality and background color when flattening transparency for JPEG.
+- Domain-specific exceptions for invalid images, unsupported formats, oversized images, and conversion failures.
 - Automated tests, code quality checks, and static type checking.
 
 ## Planned Features
 
-- [ ] Image format conversion
+- [x] Image format conversion core (Python service; no HTTP endpoint yet)
 - [ ] Video format conversion
 - [ ] Audio processing
 - [ ] Document conversion
 - [ ] Batch file processing
-- [ ] REST API for media processing
+- [ ] REST API endpoint for image conversion and other media processing
 
-These features are planned and are not yet available as a complete application.
+The image conversion core is implemented, but the end-user upload/download API, frontend, and other media workflows are not yet available.
 
 ## Tech Stack
 
@@ -34,6 +38,7 @@ These features are planned and are not yet available as a complete application.
 - **FastAPI** — Web API framework
 - **Uvicorn** — ASGI server
 - **Pydantic Settings** — Application configuration
+- **Pillow** — Image decoding, validation, and conversion
 - **uv** — Dependency and environment management
 - **pytest and pytest-cov** — Automated testing and coverage
 - **HTTPX** — HTTP client used by API tests
@@ -112,6 +117,65 @@ The server is available at `http://127.0.0.1:8000` by default. The `--factory` o
 
 The root path `/` is not implemented and currently returns `404 Not Found`.
 
+### Image Conversion Core (DEV-004)
+
+The conversion core is a Python service, **not yet an HTTP endpoint**. It supports all nine source/target combinations of JPEG, PNG, and WebP, including re-encoding to the same format.
+
+**Input validation** is performed by `creatorflow.services.image_validator.validate_image(data)`. It accepts image bytes, detects the actual format using Pillow, verifies and decodes the image, and rejects:
+
+- Empty, non-byte, or corrupt image data.
+- Unsupported formats and animated images.
+- Files larger than **10 MiB**.
+- Images larger than **25,000,000 pixels**.
+
+The limits apply to input files and image dimensions; they do not represent a fixed limit on decoded memory usage or output size.
+
+**Conversion** is provided by `creatorflow.services.image_converter.PillowImageConverter`, which implements the `ImageConverter` protocol. Its `convert_image(data, options)` method returns a `ConversionResult` containing the output bytes, `ImageFormat`, and MIME type. All processing is performed in memory.
+
+```python
+from creatorflow.domain.image import ConversionOptions, ImageFormat
+from creatorflow.services.image_converter import PillowImageConverter
+
+with open("input.png", "rb") as source:
+    image_bytes = source.read()
+
+result = PillowImageConverter().convert_image(
+    image_bytes,
+    ConversionOptions(
+        target_format=ImageFormat.JPEG,
+        quality=85,
+        background_color=(255, 255, 255),
+    ),
+)
+
+with open("output.jpg", "wb") as destination:
+    destination.write(result.data)
+
+assert result.content_type == "image/jpeg"
+```
+
+This example uses local files only to demonstrate how to call the service. The converter itself does not write files.
+
+| Option | Default | Behavior |
+| --- | --- | --- |
+| `target_format` | Required | `ImageFormat.JPEG`, `.PNG`, or `.WEBP` |
+| `quality` | `85` | Integer from 1 to 100; used for JPEG and WebP, ignored for PNG |
+| `background_color` | `(255, 255, 255)` | RGB tuple used to flatten transparent images when saving JPEG |
+
+PNG and WebP output preserve transparency when present; JPEG does not support transparency, so transparent pixels are composited over the configured background. The converter also handles palette, grayscale, and CMYK input modes where appropriate.
+
+The service exposes domain exceptions from `creatorflow.domain.exceptions`:
+
+| Exception | Meaning |
+| --- | --- |
+| `InvalidImageError` | Invalid, corrupt, or undecodable image |
+| `UnsupportedImageFormatError` | Unsupported source format or animation |
+| `ImageTooLargeError` | Input file or pixel limit exceeded |
+| `InvalidConversionOptionsError` | Invalid conversion settings |
+| `ImageConversionError` | Other conversion/encoding failure |
+
+These are Python exceptions; HTTP status mapping is planned for DEV-005.
+
 ## Development Checks
 
 Run the test suite:
@@ -161,6 +225,12 @@ creatorflow/
 │       │   └── router.py
 │       ├── core/
 │       │   └── config.py
+│       ├── domain/
+│       │   ├── exceptions.py
+│       │   └── image.py
+│       ├── services/
+│       │   ├── image_converter.py
+│       │   └── image_validator.py
 │       ├── utils/
 │       │   └── filenames.py
 │       ├── __init__.py
@@ -169,6 +239,11 @@ creatorflow/
 ├── tests/
 │   ├── api/
 │   │   └── test_health.py
+│   ├── domain/
+│   │   └── test_image.py
+│   ├── services/
+│   │   ├── test_image_converter.py
+│   │   └── test_image_validator.py
 │   ├── conftest.py
 │   ├── test_config.py
 │   ├── test_filenames.py
@@ -186,8 +261,9 @@ The structure will evolve as new modules are introduced.
 1. [x] Establish project tooling and testing.
 2. [x] Implement initial reusable filename utility.
 3. [x] Introduce the FastAPI application skeleton, configuration, and health endpoint.
-4. [ ] Implement the first media conversion functionality.
-5. [ ] Add batch processing and expand media-processing API endpoints.
+4. [x] DEV-004: Implement image domain contracts, validation, conversion, and unit tests.
+5. [ ] DEV-005: Expose image conversion through a FastAPI upload/download endpoint.
+6. [ ] Add batch processing and expand media-processing capabilities to video, audio, and documents.
 
 ## License
 
