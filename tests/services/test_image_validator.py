@@ -11,7 +11,7 @@ from creatorflow.domain.exceptions import (
     UnsupportedImageFormatError,
 )
 from creatorflow.domain.image import ImageFormat
-from creatorflow.services.image_validator import validate_image, MAX_IMAGE_SIZE_BYTES
+from creatorflow.services.image_validator import MAX_IMAGE_SIZE_BYTES, validate_image
 
 
 @pytest.mark.parametrize("format", ["jpeg", "png", "webp"])
@@ -128,6 +128,7 @@ def test_truncated_image(image_format) -> None:
     truncated_bytes = raw_bytes[: len(raw_bytes) // 2]
     with pytest.raises(InvalidImageError):
         validate_image(truncated_bytes)
+
 
 def test_load_oserror(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_image = MagicMock()
